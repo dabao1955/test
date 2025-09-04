@@ -1076,8 +1076,6 @@ void f2fs_submit_merged_ipu_write(struct f2fs_sb_info *sbi,
 		types = F2FS_NR_CPUS * 2 + 1;
 #endif
 
-	f2fs_bug_on(sbi, !target && !page);
-
 	for (temp = HOT; temp < types && !found; temp++) {
 		struct f2fs_bio_info *io = sbi->write_io[DATA] + temp;
 		struct list_head *head = &io->bio_list;
@@ -3408,13 +3406,12 @@ out:
 	}
 	unlock_page(page);
 	if (!S_ISDIR(inode->i_mode) && !IS_NOQUOTA(inode) &&
-			!F2FS_I(inode)->wb_task && allow_balance)
+			!F2FS_I(inode)->cp_task && allow_balance)
 		f2fs_balance_fs(sbi, need_balance_fs);
 
 	if (unlikely(f2fs_cp_error(sbi))) {
 		f2fs_submit_merged_write(sbi, DATA);
-		if (bio && *bio)
-			f2fs_submit_merged_ipu_write(sbi, bio, NULL);
+		f2fs_submit_merged_ipu_write(sbi, bio, NULL);
 		submitted = NULL;
 	}
 
@@ -3725,7 +3722,7 @@ static inline bool __should_serialize_io(struct inode *inode,
 					struct writeback_control *wbc)
 {
 	/* to avoid deadlock in path of data flush */
-	if (F2FS_I(inode)->wb_task)
+	if (F2FS_I(inode)->cp_task)
 		return false;
 
 	if (!S_ISREG(inode->i_mode))
