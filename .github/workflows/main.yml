@@ -1,0 +1,44 @@
+name: Kernel CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    container: debian:sid
+
+    strategy:
+      # Set fail-fast to false to ensure that feedback is delivered for all matrix combinations. Consider changing this to true when your workflow is stable.
+      fail-fast: false
+
+    steps:
+    - uses: actions/checkout@v4
+        
+    - name: Setup dep
+      run: |
+        apt-get update
+        apt-get install curl bison flex make binutils-aarch64-linux-gnu dwarves git aria2 pahole zip perl make gcc python3 python-is-python3 bc libssl-dev libelf-dev cpio tar xz-utils -y
+    - name: Setup clang
+      run: |
+        mkdir -p $HOME/clang
+        aria2c https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/refs/heads/android16-release/clang-r547379.tar.gz -o clang.tar.gz
+        tar -xzf clang.tar.gz -C $HOME/clang
+        rm -v clang.tar.gz
+    - name: Configure and build
+      run: |
+        mkdir -p -v out
+        export PATH="$HOME/clang/bin":${PATH} 
+        make ARCH=arm64 CLANG_TRIPLE="aarch64-linux-gnu-" CROSS_COMPILE="aarch64-linux-gnu-" CROSS_COMPILE_ARM32="arm-linux-gnueabihf-" LLVM=1 O=out KCFLAGS+=-Wno-error gki_defconfig all -j8
+        test -f out/.config && cp out/.config out/config -v
+    - name: clean
+      run: |
+        rm -rf -v $(find out -name *.o)
+        rm -rf -v $(find out -name *.a)
+        rm -rf -v source/drivers
+    - uses: actions/upload-artifact@v4
+      with:
+        name: boot
+        path: out/arch/arm64/boot/Image
