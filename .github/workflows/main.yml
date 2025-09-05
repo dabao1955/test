@@ -8,7 +8,6 @@ on:
 jobs:
   build:
     runs-on: ubuntu-24.04
-    container: debian:sid
 
     strategy:
       # Set fail-fast to false to ensure that feedback is delivered for all matrix combinations. Consider changing this to true when your workflow is stable.
@@ -16,11 +15,17 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-        
+    - uses: rokibhasansagar/slimhub_actions@main
     - name: Setup dep
       run: |
-        apt-get update
-        apt-get install curl bison flex make binutils-aarch64-linux-gnu dwarves git aria2 pahole zip perl make gcc python3 python-is-python3 bc libssl-dev libelf-dev cpio tar xz-utils -y
+        sudo apt-get update
+        sudo apt-get install curl bison flex make binutils-aarch64-linux-gnu dwarves git aria2 pahole zip perl make gcc python3 python-is-python3 bc libssl-dev libelf-dev cpio tar xz-utils -y
+
+    - name: Set swap space
+      uses: pierotofy/set-swap-space@master
+      with:
+        swap-size-gb: 16
+
     - name: Setup clang
       run: |
         mkdir -p $HOME/clang
@@ -42,3 +47,4 @@ jobs:
       with:
         name: boot
         path: out/arch/arm64/boot/Image
+
