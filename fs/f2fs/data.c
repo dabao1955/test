@@ -554,6 +554,16 @@ static blk_opf_t f2fs_io_flags(struct f2fs_io_info *fio)
 	return op_flags;
 }
 
+/*
+ * Return true, if pre_bio's bdev is same as its target device.
+ */
+static bool __same_bdev(struct f2fs_sb_info *sbi,
+                                block_t blk_addr, struct bio *bio)
+{
+	struct block_device *b = f2fs_target_device(sbi, blk_addr, NULL);
+	return bio_dev(bio) == b->bd_dev;
+}
+
 static struct bio *__bio_alloc(struct f2fs_io_info *fio, int npages)
 {
 	struct f2fs_sb_info *sbi = fio->sbi;
@@ -929,7 +939,7 @@ static bool page_is_mergeable(struct f2fs_sb_info *sbi, struct bio *bio,
 		return false;
 	if (last_blkaddr + 1 != cur_blkaddr)
 		return false;
-	return bio->bi_bdev == f2fs_target_device(sbi, cur_blkaddr, NULL);
+	return __same_bdev(sbi, cur_blkaddr, bio);
 }
 
 static bool io_type_is_mergeable(struct f2fs_bio_info *io,
@@ -2217,6 +2227,37 @@ static inline u64 bytes_to_blks(struct inode *inode, u64 bytes)
 static inline u64 blks_to_bytes(struct inode *inode, u64 blks)
 {
 	return (blks << inode->i_blkbits);
+}
+
+static int get_data_block_bmap(struct inode *inode, sector_t iblock,
+        struct buffer_head *bh_result, int create)
+{
+    struct dnode_of_data dn;
+    int ret;
+
+    if (unlikely(iblock >= max_file_blocks(inode)))
+        return -EFBIG;
+
+    /* Get data block address */
+    set_new_dnode(&dn, inode, NULL, NULL, 0);
+    ret = f2fs_get_dnode_of_data(&dn, iblock, 0);
+    if (ret)
+        goto out;
+
+    if (dn.data_blkaddr == NULL_ADDR) {
+        ret = -ENOENT;
+        goto put_dnode;
+    }
+
+    /* Set buffer_head result */
+    set_buffer_mapped(bh_result);
+    bh_result->b_blocknr = dn.data_blkaddr;
+    bh_result->b_size = inode->i_sb->s_blocksize;
+
+put_dnode:
+    f2fs_put_dnode(&dn);
+out:
+    return ret;
 }
 
 static int f2fs_xattr_fiemap(struct inode *inode,
@@ -4305,37 +4346,31 @@ static sector_t f2fs_bmap_compress(struct inode *inode, sector_t block)
 
 static sector_t f2fs_bmap(struct address_space *mapping, sector_t block)
 {
-	struct inode *inode = mapping->host;
-	sector_t blknr = 0;
+    struct inode *inode = mapping->host;
+    sector_t blknr = 0;
+    struct buffer_head bh_result;
 
-	if (f2fs_has_inline_data(inode))
-		goto out;
+    if (f2fs_has_inline_data(inode))
+        goto out;
 
-	/* make sure allocating whole blocks */
-	if (mapping_tagged(mapping, PAGECACHE_TAG_DIRTY))
-		filemap_write_and_wait(mapping);
+    /* make sure allocating whole blocks */
+    if (mapping_tagged(mapping, PAGECACHE_TAG_DIRTY))
+        filemap_write_and_wait(mapping);
 
-	/* Block number less than F2FS MAX BLOCKS */
-	if (unlikely(block >= max_file_blocks(inode)))
-		goto out;
+    /* Block number less than F2FS MAX BLOCKS */
+    if (unlikely(block >= max_file_blocks(inode)))
+        goto out;
 
-	if (f2fs_compressed_file(inode)) {
-		blknr = f2fs_bmap_compress(inode, block);
-	} else {
-		struct f2fs_map_blocks map;
-
-		memset(&map, 0, sizeof(map));
-		map.m_lblk = block;
-		map.m_len = 1;
-		map.m_next_pgofs = NULL;
-		map.m_seg_type = NO_CHECK_TYPE;
-
-		if (!f2fs_map_blocks(inode, &map, F2FS_GET_BLOCK_BMAP))
-			blknr = map.m_pblk;
-	}
+    if (f2fs_compressed_file(inode)) {
+        blknr = f2fs_bmap_compress(inode, block);
+    } else {
+        memset(&bh_result, 0, sizeof(bh_result));
+        if (!get_data_block_bmap(inode, block, &bh_result, 0))
+            blknr = bh_result.b_blocknr;
+    }
 out:
-	trace_f2fs_bmap(inode, block, blknr);
-	return blknr;
+    trace_f2fs_bmap(inode, block, blknr);
+    return blknr;
 }
 
 #ifdef CONFIG_SWAP
@@ -4714,7 +4749,13 @@ static int f2fs_iomap_begin(struct inode *inode, loff_t offset, loff_t length,
 		iomap->bdev = map.m_bdev;
 		iomap->addr = blks_to_bytes(inode, map.m_pblk);
 	} else {
-		if (flags & IOMAP_WRITE)
+
+	/*
+	 * If the blocks being overwritten are already allocated,
+	 * f2fs_map_lock and f2fs_balance_fs are not necessary.
+	 */
+	if ((flags & IOMAP_WRITE) &&
+		!f2fs_overwrite_io(inode, offset, length))
 			return -ENOTBLK;
 		iomap->length = blks_to_bytes(inode, next_pgofs) -
 				iomap->offset;
