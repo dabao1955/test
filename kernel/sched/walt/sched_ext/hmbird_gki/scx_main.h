@@ -11,9 +11,9 @@
 #include <linux/atomic.h>
 #include <linux/cgroup-defs.h>
 #include <linux/sched/cputime.h>
-#include <../kernel/sched/sched.h>
-#include <../../../kernel/sched/walt/walt.h>
-#include <../kernel/oplus_cpu/sched/sched_assist/sa_common.h>
+#include 
+#include "../../walt.h"
+#include "../../sa_common.h"
 #include "sched_ext.h"
 
 #define MAX_BPF_DSQS (10)

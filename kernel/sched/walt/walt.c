@@ -22,6 +22,27 @@
 #include <trace/hooks/cgroup.h>
 #include "walt.h"
 #include "trace.h"
+#include "penalty.h"
+
+#if IS_ENABLED(CONFIG_OPLUS_FEATURE_FRAME_BOOST)
+#include "frame_group.h"
+#endif
+
+#ifdef CONFIG_OPLUS_SCHED_GROUP_OPT
+#include "sa_group.h"
+#endif
+
+#if IS_ENABLED(CONFIG_OPLUS_FEATURE_GKI_CPUFREQ_BOUNCING)
+#include <linux/cpufreq_bouncing.h>
+#endif
+
+#if IS_ENABLED(CONFIG_OPLUS_FEATURE_PIPELINE)
+#include "sa_pipeline.h"
+#endif
+
+#if IS_ENABLED(CONFIG_OPLUS_FEATURE_ABNORMAL_FLAG)
+#include "task_overload.h"
+#endif
 
 const char *task_event_names[] = {
 	"PUT_PREV_TASK",
@@ -52,6 +73,7 @@ DEFINE_SPINLOCK(cpus_taken_lock);
 DEFINE_PER_CPU(int, cpus_taken_refcount);
 
 DEFINE_PER_CPU(struct walt_rq, walt_rq);
+EXPORT_PER_CPU_SYMBOL_GPL(walt_rq);
 unsigned int sysctl_sched_user_hint;
 static u64 sched_clock_last;
 static bool walt_clock_suspended;
@@ -1634,6 +1656,9 @@ static bool do_pl_notif(struct rq *rq)
 	return (pl > prev) && (load_to_freq(rq, pl - prev) > 400000);
 }
 
+#define CMD_ADD		(1)
+#define CMD_SET		(2)
+
 static void rollover_cpu_window(struct rq *rq, bool full_window)
 {
 	struct walt_rq *wrq = &per_cpu(walt_rq, cpu_of(rq));
@@ -2707,6 +2732,10 @@ static void update_all_clusters_stats(void)
 			min_possible_cluster_id = cluster_id;
 		}
 	}
+#if IS_ENABLED(CONFIG_OPLUS_FEATURE_ABNORMAL_FLAG)
+	walt_update_cluster_id(min_possible_cluster_id, max_possible_cluster_id);
+#endif /* #OPLUS_FEATURE_ABNORMAL_FLAG */
+
 	walt_update_group_thresholds();
 }
 
@@ -3411,6 +3440,9 @@ static void android_rvh_cpu_cgroup_online(void *unused, struct cgroup_subsys_sta
 		return;
 
 	walt_update_tg_pointer(css);
+#ifdef CONFIG_OPLUS_SCHED_GROUP_OPT
+	oplus_update_tg_map(css, false);
+#endif
 }
 
 static void android_rvh_cpu_cgroup_attach(void *unused,
@@ -4477,6 +4509,19 @@ static void walt_irq_work(struct irq_work *irq_work)
 	bool is_migration = false, is_asym_migration = false, is_shared_rail_migration = false;
 	u32 wakeup_ctr_sum = 0;
 	bool found_topapp = false;
+#if !IS_ENABLED(CONFIG_OPLUS_FEATURE_PIPELINE)
+	bool need_assign_heavy = false;
+#endif
+
+#if IS_ENABLED(CONFIG_OPLUS_FEATURE_GKI_CPUFREQ_BOUNCING)
+	for_each_sched_cluster(cluster) {
+		int cpu = cpumask_first(&cluster->cpus);
+		struct cpufreq_policy *pol = cpufreq_cpu_get_raw(cpu);
+
+		if (pol)
+			cb_update(pol, walt_sched_clock());
+	}
+#endif
 
 	if (irq_work == &walt_migration_irq_work)
 		is_migration = true;
@@ -4533,7 +4578,11 @@ static void walt_irq_work(struct irq_work *irq_work)
 		found_topapp = find_heaviest_topapp(wrq->window_start);
 		/* found_topapp should force rearrangement */
 		rearrange_heavy(wrq->window_start, found_topapp);
+#if IS_ENABLED(CONFIG_OPLUS_FEATURE_PIPELINE)
+		qcom_rearrange_pipeline_preferred_cpus(walt_scale_demand_divisor);
+#else
 		rearrange_pipeline_preferred_cpus(wrq->window_start);
+#endif
 		pipeline_reset_boost();
 		core_ctl_check(wrq->window_start, wakeup_ctr_sum);
 	}
@@ -4930,18 +4979,24 @@ static void android_rvh_set_task_cpu(void *unused, struct task_struct *p, unsign
 		WALT_BUG(WALT_BUG_WALT, p, "selecting unaffined cpu=%d comm=%s(%d) affinity=0x%x",
 			 new_cpu, p->comm, p->pid, (*(cpumask_bits(p->cpus_ptr))));
 
-	if (!p->in_execve &&
-	    is_compat_thread(task_thread_info(p)) &&
-	    !cpumask_test_cpu(new_cpu, system_32bit_el0_cpumask()))
-		WALT_BUG(WALT_BUG_WALT, p,
-			 "selecting non 32 bit cpu=%d comm=%s(%d) 32bit_cpus=0x%x",
-			 new_cpu, p->comm, p->pid, (*(cpumask_bits(system_32bit_el0_cpumask()))));
+	if (!cpumask_empty(system_32bit_el0_cpumask())) {
+		if (!p->in_execve &&
+			is_compat_thread(task_thread_info(p)) &&
+			!cpumask_test_cpu(new_cpu, system_32bit_el0_cpumask()))
+			WALT_BUG(WALT_BUG_WALT, p,
+				"selecting non 32 bit cpu=%d comm=%s(%d) 32bit_cpus=0x%lx",
+				new_cpu, p->comm, p->pid, (*(cpumask_bits(system_32bit_el0_cpumask()))));
+	}
 }
 
 static void android_rvh_new_task_stats(void *unused, struct task_struct *p)
 {
+#if IS_ENABLED(CONFIG_OPLUS_FEATURE_FRAME_BOOST)
+	update_wake_up(p);
+#endif
 	if (unlikely(walt_disabled))
 		return;
+		penalty_flush_task(p);
 	mark_task_starting(p);
 }
 
@@ -5139,6 +5194,10 @@ static void android_rvh_try_to_wake_up(void *unused, struct task_struct *p)
 	u64 wallclock;
 	unsigned int old_load;
 	struct walt_related_thread_group *grp = NULL;
+
+#if IS_ENABLED(CONFIG_OPLUS_FEATURE_FRAME_BOOST)
+	update_wake_up(p);
+#endif
 
 	if (unlikely(walt_disabled))
 		return;
@@ -5482,9 +5541,17 @@ static void walt_init_tg_pointers(void)
 	struct cgroup_subsys_state *css = &root_task_group.css;
 	struct cgroup_subsys_state *top_css = css;
 
+#ifdef CONFIG_OPLUS_SCHED_GROUP_OPT
+	oplus_update_tg_map(top_css, true);
+#endif
+
 	rcu_read_lock();
-	css_for_each_child(css, top_css)
+	css_for_each_child(css, top_css) {
 		walt_update_tg_pointer(css);
+#ifdef CONFIG_OPLUS_SCHED_GROUP_OPT
+		oplus_update_tg_map(css, true);
+#endif
+	}
 	rcu_read_unlock();
 }
 

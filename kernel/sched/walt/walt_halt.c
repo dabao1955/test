@@ -9,6 +9,16 @@
 #include <walt.h>
 #include "trace.h"
 
+#ifdef CONFIG_OPLUS_ADD_CORE_CTRL_MASK
+#if IS_ENABLED(CONFIG_OPLUS_FEATURE_FRAME_BOOST)
+#include "frame_group.h"
+#endif
+#if IS_ENABLED(CONFIG_OPLUS_FEATURE_SCHED_ASSIST)
+#include "sa_common.h"
+#include "sa_fair.h"
+#endif
+#endif /* CONFIG_OPLUS_ADD_CORE_CTRL_MASK */
+
 #ifdef CONFIG_HOTPLUG_CPU
 
 enum pause_type {
@@ -300,6 +310,7 @@ static int halt_cpus(struct cpumask *cpus, enum pause_type type)
 	u64 start_time = 0;
 	struct halt_cpu_state *halt_cpu_state;
 	unsigned long flags;
+	int *pause_client_state;
 
 	if (trace_halt_cpus_enabled())
 		start_time = sched_clock();
@@ -429,6 +440,10 @@ static int walt_halt_cpus(struct cpumask *cpus, enum pause_client client, enum p
 			 cpumask_pr_args(&requested_cpus));
 	else
 		update_clients(&requested_cpus, true, client, type);
+		cpumask_copy(&cur_cpus_halt_mask, cpu_halt_mask);
+		cpumask_copy(&cur_cpus_phalt_mask, cpu_partial_halt_mask);
+		sa_corectl_systrace_c();
+
 unlock:
 	raw_spin_unlock_irqrestore(&halt_lock, flags);
 
@@ -473,6 +488,10 @@ static int walt_start_cpus(struct cpumask *cpus, enum pause_client client, enum 
 		/* restore/increment ref counts in case of error */
 		update_clients(&requested_cpus, true, client, type);
 	}
+
+	cpumask_copy(&cur_cpus_halt_mask, cpu_halt_mask);
+	cpumask_copy(&cur_cpus_phalt_mask, cpu_partial_halt_mask);
+	sa_corectl_systrace_c();
 
 	raw_spin_unlock_irqrestore(&halt_lock, flags);
 
@@ -721,6 +740,15 @@ void walt_halt_init(void)
 	}
 
 	sched_setscheduler_nocheck(walt_drain_thread, SCHED_FIFO, &param);
+
+#ifdef CONFIG_OPLUS_ADD_CORE_CTRL_MASK
+#if IS_ENABLED(CONFIG_OPLUS_FEATURE_FRAME_BOOST)
+	init_fbg_halt_mask(&__cpu_halt_mask);
+#endif
+#if IS_ENABLED(CONFIG_OPLUS_FEATURE_SCHED_ASSIST)
+	init_ux_halt_mask(&__cpu_halt_mask);
+#endif
+#endif /* CONFIG_OPLUS_ADD_CORE_CTRL_MASK */
 
 	register_trace_android_rvh_get_nohz_timer_target(android_rvh_get_nohz_timer_target, NULL);
 	register_trace_android_rvh_set_cpus_allowed_by_task(

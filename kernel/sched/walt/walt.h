@@ -21,6 +21,21 @@
 #include <linux/sched/clock.h>
 #include <trace/hooks/cgroup.h>
 
+#if IS_ENABLED(CONFIG_OPLUS_FEATURE_SCHED_ASSIST)
+#include "sa_fair.h"
+#endif
+
+#if IS_ENABLED(CONFIG_OPLUS_FEATURE_FRAME_BOOST)
+#include "frame_group.h"
+#endif
+
+#if IS_ENABLED(CONFIG_OPLUS_FEATURE_CPU_CLOSE_LOOP)
+extern void walt_cl_update_util_ops(
+	unsigned long (*)(int cpu, unsigned long orig, bool ed_active),
+	unsigned long (*)(int cpu, unsigned long orig, bool ed_active));
+extern void walt_trig_cpufreq_update(int cpu);
+#endif
+
 #define MSEC_TO_NSEC (1000 * 1000)
 
 #ifdef CONFIG_HZ_300
@@ -269,6 +284,11 @@ extern enum sched_boost_policy boost_policy;
 extern unsigned int sysctl_input_boost_ms;
 extern unsigned int sysctl_input_boost_freq[8];
 extern unsigned int sysctl_sched_boost_on_input;
+#if IS_ENABLED(CONFIG_OPLUS_FEATURE_CEILING_FREE)
+extern unsigned int sysctl_ceiling_free_enable;
+extern unsigned int sysctl_cb_ceiling_free_enable;
+extern unsigned int sysctl_omrg_ceiling_free_enable;
+#endif
 extern unsigned int sysctl_sched_user_hint;
 extern unsigned int sysctl_sched_conservative_pl;
 extern unsigned int sysctl_sched_hyst_min_coloc_ns;
@@ -476,6 +496,24 @@ static inline unsigned long capacity_curr_of(int cpu)
 	unsigned long scale_freq = arch_scale_freq_capacity(cpu);
 
 	return cap_scale(max_cap, scale_freq);
+}
+
+static inline void init_hmbird_rq_wrq_variables(void)
+{
+	unsigned int cpu;
+	struct rq *rq;
+	struct walt_rq *wrq;
+
+	for_each_present_cpu(cpu) {
+		rq = cpu_rq(cpu);
+		wrq = &per_cpu(walt_rq, cpu);
+		struct hmbird_rq *hrq = get_hmbird_rq(rq);
+
+		if (hrq) {
+			hrq->prev_runnable_sum_fixed = (u64*)&(wrq->prev_runnable_sum_fixed);
+			hrq->prev_window_size = (u32*)&(wrq->prev_window_size);
+		}
+	}
 }
 
 static inline unsigned long task_util(struct task_struct *p)
@@ -1060,6 +1098,16 @@ static inline bool is_state1(void)
 /* determine if this task should be allowed to use a partially halted cpu */
 static inline bool task_reject_partialhalt_cpu(struct task_struct *p, int cpu)
 {
+#if IS_ENABLED(CONFIG_OPLUS_FEATURE_SCHED_ASSIST)
+	if (should_ux_task_skip_cpu(p, cpu))
+		return true;
+#endif
+
+#if IS_ENABLED(CONFIG_OPLUS_FEATURE_FRAME_BOOST)
+	if (fbg_skip_migration(p, task_cpu(p), cpu))
+		return true;
+#endif
+
 	if (p->prio < MAX_RT_PRIO)
 		return false;
 

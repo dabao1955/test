@@ -4,7 +4,7 @@
  */
 #include <linux/sched.h>
 #include <linux/sched/cputime.h>
-#include <../kernel/sched/sched.h>
+#include "../../sched.h"
 
 #include "trace_sched_ext.h"
 
