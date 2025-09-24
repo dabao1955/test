@@ -6,12 +6,12 @@
 /*
  * we need this file to avoid circle detected.
 */
-#include "walt.h"
+#include "../walt.h"
 
-#include "sa_common.h"
-#include "sa_fair.h"
+#include "../sa_common.h"
+#include "../sa_fair.h"
 #if IS_ENABLED(CONFIG_SCHED_WALT)
-#include "frame_boost.h"
+#include "../frame_boost.h"
 #endif
 
 

@@ -11,3 +11,5 @@ obj-$(CONFIG_SCHED_WALT_DEBUG) += sched-walt-debug.o
 sched-walt-debug-$(CONFIG_SCHED_WALT_DEBUG) := walt_debug.o preemptirq_long.o
 obj-$(CONFIG_SCHED_WALT) += sched-penalty.o
 sched-penalty-$(CONFIG_SCHED_WALT) := penalty.o
+obj-y += sched/
+obj -y += sched_ext/
