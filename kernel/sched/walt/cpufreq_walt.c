@@ -17,13 +17,13 @@
 #include "trace.h"
 
 #if IS_ENABLED(CONFIG_OPLUS_FEATURE_FRAME_BOOST)
-#include <../kernel/oplus_cpu/sched/frame_boost/frame_group.h>
-#include <../kernel/oplus_cpu/sched/frame_boost/frame_debug.h>
-#include <../kernel/oplus_cpu/sched/frame_boost/frame_boost.h>
+#include "frame_group.h"
+#include "frame_debug.h"
+#include "frame_boost.h"
 #endif
 
 #if IS_ENABLED(CONFIG_OPLUS_FEATURE_CPU_CLOSE_LOOP)
-#include <../kernel/oplus_cpu/close_loop/close_loop.h>
+#include "close_loop.h"
 #endif
 
 struct waltgov_tunables {
