@@ -1,7 +1,7 @@
 #include <linux/sched.h>
 #include <linux/sched/task.h>
 #include <linux/uaccess.h>
-#include <../kernel/oplus_cpu/sched/sched_assist/sa_common.h>
+#include "../../sa_common.h"
 #include "frame_group.h"
 #include "cluster_boost.h"
 

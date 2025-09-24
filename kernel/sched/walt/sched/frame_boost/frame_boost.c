@@ -18,7 +18,7 @@
 #endif /* CONFIG_OPLUS_FEATURE_SCHED_CFBT */
 
 #if IS_ENABLED(CONFIG_OPLUS_FEATURE_SCHED_ASSIST)
-#include <../kernel/oplus_cpu/sched/sched_assist/sa_common.h>
+#include "../../sa_common.h"
 #endif
 
 struct fbg_vendor_hook fbg_hook;

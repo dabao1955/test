@@ -4,7 +4,7 @@
  */
 #ifndef _OPLUS_SCHED_EXT_H
 #define _OPLUS_SCHED_EXT_H
-#include <../kernel/oplus_cpu/sched/sched_assist/sa_common.h>
+#include "../../sa_common.h"
 
 #define SCHED_PROP_TOP_THREAD_SHIFT (8)
 #define SCHED_PROP_TOP_THREAD_MASK  (0xf << SCHED_PROP_TOP_THREAD_SHIFT)

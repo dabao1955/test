@@ -12,7 +12,7 @@
 #include <trace/hooks/sched.h>
 #include <linux/sched/clock.h>
 
-#include <../kernel/oplus_cpu/sched/sched_assist/sa_common.h>
+#include "../../sa_common.h"
 #include "tune.h"
 
 #define ENQUEUE_TASK  1

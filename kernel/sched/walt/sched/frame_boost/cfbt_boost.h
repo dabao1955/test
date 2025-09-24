@@ -7,7 +7,7 @@
 #define _CFBT_BOOST_H
 #include "cfbt_boost_struct.h"
 #include "cfbt_config.h"
-#include <../kernel/oplus_cpu/sched/sched_assist/sa_common.h>
+#include "../../sa_common.h"
 
 int __cfbt_set_scene_start(struct cfbt_struct *data);
 int __cfbt_set_scene_end(struct cfbt_struct *data);

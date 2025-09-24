@@ -16,7 +16,7 @@
 #include "osi_cpuloadmonitor.h"
 #include "osi_healthinfo.h"
 #include "osi_amu.h"
-#include "../kernel/oplus_cpu/sched/sched_assist/cputime.h"
+#include "../sched_assist/cputime.h"
 
 static struct proc_dir_entry *d_task_info;
 static struct proc_dir_entry *d_cpu_jank_info;

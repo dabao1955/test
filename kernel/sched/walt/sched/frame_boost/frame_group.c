@@ -18,7 +18,7 @@
 #include <trace/events/task.h>
 #include <trace/events/power.h>
 
-#include <../kernel/oplus_cpu/sched/sched_assist/sa_common.h>
+#include "../../sa_common.h"
 #include "frame_boost.h"
 #include "cluster_boost.h"
 #include "frame_debug.h"

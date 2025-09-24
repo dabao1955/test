@@ -37,7 +37,7 @@
 #include "../kernel/oplus_cpu/sched/sched_assist/cputime.h"
 
 #if IS_ENABLED(CONFIG_OPLUS_FEATURE_FRAME_BOOST)
-#include <../kernel/oplus_cpu/sched/frame_boost/frame_group.h>
+#include "../../frame_group.h"
 #endif
 
 #define MAX_CPU_CLUSTER 4

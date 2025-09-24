@@ -15,7 +15,7 @@
 #include <linux/sched/task.h>
 #include <linux/kernel.h>
 #include <linux/printk.h>
-#include <../kernel/oplus_cpu/sched/sched_assist/sa_common.h>
+#include "../../sa_common.h"
 #include "cfbt_trace.h"
 #include "cfbt_config.h"
 #define DEFAULT_FRAME_RATE (60)

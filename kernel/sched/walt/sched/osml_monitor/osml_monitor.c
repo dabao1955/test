@@ -43,7 +43,7 @@
 #include <linux/input.h>
 #include <linux/sched/cputime.h>
 #if defined(CONFIG_OPLUS_FEATURE_SCHED_ASSIST) || defined(CONFIG_OPLUS_FEATURE_SCHED_ASSIST_MODULE)
-#include <../kernel/oplus_cpu/sched/sched_assist/sa_common.h>
+#include "../../sa_common.h"
 #endif
 #if !defined(CONFIG_MTK_PLATFORM)
 #include <linux/sched/sysctl.h>

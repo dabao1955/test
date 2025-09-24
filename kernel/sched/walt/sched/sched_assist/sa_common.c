@@ -39,7 +39,7 @@
 #endif
 
 #if IS_ENABLED(CONFIG_OPLUS_FEATURE_FRAME_BOOST)
-#include <../kernel/oplus_cpu/sched/frame_boost/frame_group.h>
+#include "../../frame_group.h"
 #endif
 
 #if IS_ENABLED(CONFIG_OPLUS_FEATURE_SCHED_DDL)

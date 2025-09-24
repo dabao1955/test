@@ -19,7 +19,7 @@
 #include <linux/sched/cputime.h>
 #include <kernel/sched/sched.h>
 #include "task_load.h"
-#include <../kernel/oplus_cpu/sched/sched_assist/sa_common.h>
+#include "../../sa_common.h"
 
 #define REGISTER_TRACE_VH(vender_hook, handler) \
 ({ \
