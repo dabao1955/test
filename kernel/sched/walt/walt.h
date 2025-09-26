@@ -498,24 +498,6 @@ static inline unsigned long capacity_curr_of(int cpu)
 	return cap_scale(max_cap, scale_freq);
 }
 
-static inline void init_hmbird_rq_wrq_variables(void)
-{
-	unsigned int cpu;
-	struct rq *rq;
-	struct walt_rq *wrq;
-
-	for_each_present_cpu(cpu) {
-		rq = cpu_rq(cpu);
-		wrq = &per_cpu(walt_rq, cpu);
-		struct hmbird_rq *hrq = get_hmbird_rq(rq);
-
-		if (hrq) {
-			hrq->prev_runnable_sum_fixed = (u64*)&(wrq->prev_runnable_sum_fixed);
-			hrq->prev_window_size = (u32*)&(wrq->prev_window_size);
-		}
-	}
-}
-
 static inline unsigned long task_util(struct task_struct *p)
 {
 	struct walt_task_struct *wts = (struct walt_task_struct *) p->android_vendor_data1;

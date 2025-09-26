@@ -304,7 +304,7 @@ static inline unsigned long task_util(struct task_struct *p)
 
 static inline unsigned long _task_util_est(struct task_struct *p)
 {
-	return READ_ONCE(p->se.avg.util_est) & ~UTIL_AVG_UNCHANGED;
+	return READ_ONCE(p->se.avg.util_est.ewma) & ~UTIL_AVG_UNCHANGED;
 }
 
 static unsigned long
@@ -333,11 +333,11 @@ cpu_util(int cpu, struct task_struct *p, int dst_cpu, int boost)
 	if (sched_feat(UTIL_EST)) {
 		unsigned long util_est;
 
-		util_est = READ_ONCE(cfs_rq->avg.util_est);
+		util_est = READ_ONCE(cfs_rq->avg.util_est.ewma);
 
 		/*
 		 * During wake-up @p isn't enqueued yet and doesn't contribute
-		 * to any cpu_rq(cpu)->cfs.avg.util_est.enqueued.
+		 * to any cpu_rq(cpu)->cfs.avg.util_est.ewma.enqueued.
 		 * If @dst_cpu == @cpu add it to "simulate" cpu_util after @p
 		 * has been enqueued.
 		 *
@@ -401,7 +401,7 @@ static inline unsigned long cpu_util_cum(int cpu)
 	util = READ_ONCE(cfs_rq->avg.util_avg);
 
 	if (sched_feat(UTIL_EST))
-		util = max(util, READ_ONCE(cfs_rq->avg.util_est));
+		util = max(util, READ_ONCE(cfs_rq->avg.util_est.ewma));
 
 	return min_t(unsigned long, util, capacity_orig_of(cpu));
 }

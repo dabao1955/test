@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: GPL-2.0-only
 # Copyright (C) 2018-2020 Oplus. All rights reserved.
 
+KBUILD_CFLAGS += -Wno-implicit-function-declaration -Wno-incompatible-function-pointer-types -Wno-format-security
+
 GCOV_PROFILE := y
 LINUXINCLUDE += -I$(srctree)/
 

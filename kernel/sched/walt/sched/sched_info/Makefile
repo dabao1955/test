@@ -1,6 +1,8 @@
 GCOV_PROFILE := y
 LINUXINCLUDE += -I$(srctree)/
 
+KBUILD_CFLAGS += -Wno-implicit-function-declaration
+
 obj-$(CONFIG_OPLUS_FEATURE_CPU_JANKINFO) += oplus_bsp_schedinfo.o
 oplus_bsp_schedinfo-y += oplus_sched_info.o
 oplus_bsp_schedinfo-y += osi_base.o

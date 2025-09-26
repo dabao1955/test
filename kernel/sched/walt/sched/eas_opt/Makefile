@@ -1,3 +1,5 @@
+KBUILD_CFLAGS += -Wno-format-security
+
 GCOV_PROFILE := y
 obj-$(CONFIG_OPLUS_FEATURE_EAS_OPT) += oplus_bsp_eas_opt.o
 

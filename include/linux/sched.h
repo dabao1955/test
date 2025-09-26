@@ -559,7 +559,10 @@ struct sched_entity {
 	u64				sum_exec_runtime;
 	u64				vruntime;
 	u64				prev_sum_exec_runtime;
+	u64				slice;
+	u64				deadline;
 
+	u64				vlag;
 	u64				nr_migrations;
 
 #ifdef CONFIG_FAIR_GROUP_SCHED

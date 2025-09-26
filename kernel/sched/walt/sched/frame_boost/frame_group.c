@@ -2375,7 +2375,7 @@ static inline unsigned long cpu_util(int cpu)
 	util = READ_ONCE(cfs_rq->avg.util_avg);
 
 	if (sched_feat(UTIL_EST))
-		util = max(util, READ_ONCE(cfs_rq->avg.util_est));
+		util = max(util, READ_ONCE(cfs_rq->avg.util_est.ewma));
 
 	return min_t(unsigned long, util, capacity_orig_of(cpu));
 }
@@ -2387,7 +2387,7 @@ static inline unsigned long task_util(struct task_struct *p)
 
 static inline unsigned long _task_util_est(struct task_struct *p)
 {
-	return READ_ONCE(p->se.avg.util_est) & ~UTIL_AVG_UNCHANGED;
+	return READ_ONCE(p->se.avg.util_est.ewma) & ~UTIL_AVG_UNCHANGED;
 }
 
 unsigned long cpu_util_without(int cpu, struct task_struct *p)
@@ -2433,7 +2433,7 @@ unsigned long cpu_util_without(int cpu, struct task_struct *p)
 	 */
 	if (sched_feat(UTIL_EST)) {
 		unsigned int estimated =
-			READ_ONCE(cfs_rq->avg.util_est);
+			READ_ONCE(cfs_rq->avg.util_est.ewma);
 		/*
 		 * Despite the following checks we still have a small window
 		 * for a possible race, when an execl's select_task_rq_fair()

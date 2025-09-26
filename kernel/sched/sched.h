@@ -569,6 +569,8 @@ struct cfs_rq {
 
 	u64			exec_clock;
 	u64			min_vruntime;
+	u64			avg_vruntime;
+	u64			avg_load;
 #ifdef CONFIG_SCHED_CORE
 	unsigned int		forceidle_seq;
 	u64			min_vruntime_fi;

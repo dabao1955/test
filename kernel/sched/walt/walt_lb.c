@@ -18,7 +18,7 @@
 #endif
 
 #if IS_ENABLED(CONFIG_OPLUS_FEATURE_PIPELINE)
-#include "sa_pipeline"
+#include "sa_pipeline.h"
 #endif
 
 #if IS_ENABLED(CONFIG_OPLUS_FEATURE_ABNORMAL_FLAG)

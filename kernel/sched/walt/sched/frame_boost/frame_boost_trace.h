@@ -46,7 +46,7 @@ TRACE_EVENT(find_frame_boost_cpu,
 #ifdef CONFIG_OPLUS_SYSTEM_KERNEL_QCOM
 #define TRACE_INCLUDE_PATH .
 #else
-#define TRACE_INCLUDE_PATH ../../kernel/oplus_cpu/sched/frame_boost
+#define TRACE_INCLUDE_PATH .
 #endif
 
 #undef TRACE_INCLUDE_FILE

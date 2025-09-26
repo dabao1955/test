@@ -1000,9 +1000,7 @@ int cpufreq_walt_reset_adaptive_freq(unsigned int cpu)
 }
 EXPORT_SYMBOL_GPL(cpufreq_walt_reset_adaptive_freq);
 
-#define WALTGOV_ATTR_RW(_name)						\
-static struct governor_attr _name =					\
-__ATTR(_name, 0644, show_##_name, store_##_name)			\
+#define WALTGOV_ATTR_RW(_name) static struct governor_attr _name = __ATTR(_name, 0644, show_##_name, store_##_name);
 
 #define show_attr(name)							\
 static ssize_t show_##name(struct gov_attr_set *attr_set, char *buf)	\

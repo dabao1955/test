@@ -34,7 +34,7 @@
 #include <linux/sched_clock.h>
 #include <linux/topology.h>
 #include <linux/compiler_attributes.h>
-#include "../kernel/oplus_cpu/sched/sched_assist/cputime.h"
+#include "../sched_assist/cputime.h"
 
 #if IS_ENABLED(CONFIG_OPLUS_FEATURE_FRAME_BOOST)
 #include "../../frame_group.h"

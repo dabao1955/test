@@ -2876,7 +2876,7 @@ inline unsigned long cpu_util(int cpu)
 	if (sched_feat(UTIL_EST)) {
 		unsigned long util_est;
 
-		util_est = READ_ONCE(cfs_rq->avg.util_est);
+		util_est = READ_ONCE(cfs_rq->avg.util_est.ewma);
 		util = max(util, util_est);
 	}
 

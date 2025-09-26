@@ -52,4 +52,4 @@ config OPLUS_YIELD_OPT
 	  this macro is used for yield opt
 endmenu
 
-source "sched/Kconfig"
+source "kernel/sched/walt/sched/Kconfig"

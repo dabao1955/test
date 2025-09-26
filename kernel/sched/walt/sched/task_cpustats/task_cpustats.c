@@ -21,7 +21,7 @@
 #include <linux/interrupt.h>
 #include <linux/init.h>
 #include <linux/version.h>
-#include "../kernel/oplus_cpu/sched/sched_assist/cputime.h"
+#include "../sched_assist/cputime.h"
 
 /* FIXME get max_pid on the runtime.*/
 #define MAX_PID (32768)
@@ -48,7 +48,7 @@ static int get_power(int cpu, int freq)
 		goto err_found;
 
 	for (i = domain->nr_perf_states - 1; i > -1; i--) {
-		struct em_perf_state *cs = domain->em_table->state + i;
+		struct em_perf_state *cs = domain->table + i;
 		if (cs->frequency == freq)
 			return cs->power;
 	}
@@ -128,7 +128,7 @@ static int sge_show(struct seq_file *m, void *v)
 		min_freq = p->cpuinfo.min_freq;
 		seq_printf(m, "cpu %d\n", cpu);
 		for (i = domain->nr_perf_states - 1; i > -1; i--) {
-			struct em_perf_state *cs = domain->em_table->state + i;
+			struct em_perf_state *cs = domain->table + i;
 			if (cs->frequency >= min_freq && cs->frequency <= max_freq)
 				seq_printf(m, "freq %lu pwr %lu\n", cs->frequency, cs->power);
 		}

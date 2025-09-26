@@ -13,7 +13,7 @@
 #endif
 
 #if IS_ENABLED(CONFIG_OPLUS_FEATURE_FRAME_BOOST)
-#include "frame_group.c"
+#include "frame_group.h"
 #endif
 
 static DEFINE_PER_CPU(cpumask_var_t, walt_local_cpu_mask);

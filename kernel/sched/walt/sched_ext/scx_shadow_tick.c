@@ -3,7 +3,7 @@
  * Copyright (C) 2024 Oplus. All rights reserved.
  */
 #include <linux/tick.h>
-#include <kernel/time/tick-sched.h>
+#include "../../../time/tick-sched.h"
 #include <trace/hooks/sched.h>
 
 #include "./hmbird_gki/scx_main.h"

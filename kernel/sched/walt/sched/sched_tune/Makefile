@@ -1,3 +1,5 @@
+KBUILD_CFLAGS += -Wno-implicit-function-declaration
+
 GCOV_PROFILE := y
 LINUXINCLUDE += -I$(srctree)/
 

@@ -17,7 +17,7 @@
 #include <trace/events/task.h>
 #include <../fs/proc/internal.h>
 #include <linux/sched/cputime.h>
-#include <kernel/sched/sched.h>
+#include "../../../sched.h"
 #include "task_load.h"
 #include "../../sa_common.h"
 
@@ -259,7 +259,7 @@ static int proc_max_rt_runtime_show(struct seq_file *m, void *v)
 		seq_printf(m, "rt task duration is 0\n");
 		return 0;
 	}
-	seq_printf(m, "%s, %d, %lu\n", rt_task_info.comm, rt_task_info.pid, rt_task_info.duration);
+	seq_printf(m, "%s, %d, %llu\n", rt_task_info.comm, rt_task_info.pid, rt_task_info.duration);
 	return 0;
 }
 
