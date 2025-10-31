@@ -3,6 +3,8 @@
 #ifndef __SLIM_H
 #define __SLIM_H
 
+#define NUMS_CGROUP_KINDS    (512)
+
 extern atomic_t __hmbird_ops_enabled;
 extern atomic_t non_hmbird_task;
 extern int cgroup_ids_table[NUMS_CGROUP_KINDS];
