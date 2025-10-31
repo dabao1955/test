@@ -34,6 +34,10 @@
 
 #include <trace/events/timer.h>
 
+#ifdef CONFIG_HMBIRD_SCHED
+#include "../sched/hmbird/hmbird_shadow_tick.h"
+#endif
+
 /*
  * Per-CPU nohz control structure
  */
@@ -1143,6 +1147,10 @@ static void __tick_nohz_idle_stop_tick(struct tick_sched *ts)
 	}
 }
 
+#ifdef CONFIG_HMBIRD_SCHED
+extern void android_vh_tick_nohz_idle_stop_tick_handler(void *unused, void *data);
+#endif
+
 /**
  * tick_nohz_idle_stop_tick - stop the idle tick from the idle task
  *
@@ -1151,6 +1159,10 @@ static void __tick_nohz_idle_stop_tick(struct tick_sched *ts)
 void tick_nohz_idle_stop_tick(void)
 {
 	trace_android_vh_tick_nohz_idle_stop_tick(NULL);
+
+#ifdef CONFIG_HMBIRD_SCHED
+	android_vh_tick_nohz_idle_stop_tick_handler(NULL,NULL);
+#endif
 
 	__tick_nohz_idle_stop_tick(this_cpu_ptr(&tick_cpu_sched));
 }
