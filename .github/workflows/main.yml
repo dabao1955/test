@@ -36,6 +36,7 @@ jobs:
         mkdir -p -v out
         wget https://github.com/Anatdx/HymoFS/raw/android14_6.1/patch/hymofs.patch
         git apply hymofs.patch
+        echo CONFIG_HYMOFS=y >> arch/arm64/configs/gki_defconfig
         export PATH="$HOME/clang/bin":${PATH} 
         make ARCH=arm64 CLANG_TRIPLE="aarch64-linux-gnu-" CROSS_COMPILE="aarch64-linux-gnu-" CROSS_COMPILE_ARM32="arm-linux-gnueabihf-" LLVM=1 O=out KCFLAGS+=-Wno-error gki_defconfig all -j8
         test -f out/.config && cp out/.config out/config -v
