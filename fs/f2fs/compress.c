@@ -20,6 +20,7 @@
 #include "segment.h"
 #include <trace/events/f2fs.h>
 #if defined(CONFIG_F2FS_FS_COMPRESSION_FIXED_OUTPUT) || defined(__ARCH_HAS_LZ4_ACCELERATOR)
+#include "lz4armv8/lz4accel.h"
 #include "f2fs_lz4.h"
 #endif
 
@@ -2693,10 +2694,7 @@ void f2fs_cache_compressed_page(struct f2fs_sb_info *sbi, struct page *page,
 	if (!f2fs_is_valid_blkaddr(sbi, blkaddr, DATA_GENERIC_ENHANCE_READ))
 		goto out;
 
-    copy_page(page_address(cpage), page_address(page));
- 	if (!f2fs_is_valid_blkaddr(sbi, blkaddr, DATA_GENERIC_ENHANCE_READ))
- 		goto out;
-
+	memcpy(page_address(cpage), page_address(page), PAGE_SIZE);
 	SetPageUptodate(cpage);
 out:
 	f2fs_put_page(cpage, 1);

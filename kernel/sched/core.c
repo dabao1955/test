@@ -65,12 +65,6 @@
 #include <linux/wait_api.h>
 #include <linux/workqueue_api.h>
 
-#ifdef CONFIG_HMBIRD_SCHED
-#include "hmbird/slim.h"
-#include "hmbird/hmbird_shadow_tick.h"
-#include "hmbird.h"
-#endif
-
 #ifdef CONFIG_PREEMPT_DYNAMIC
 # ifdef CONFIG_GENERIC_ENTRY
 #  include <linux/entry-common.h>
@@ -101,6 +95,9 @@
 #include "../../io_uring/io-wq.h"
 #include "../smpboot.h"
 
+#ifdef CONFIG_HMBIRD_SCHED
+#include "slim.h"
+#endif
 
 #include <trace/hooks/sched.h>
 #include <trace/hooks/dtask.h>
@@ -189,10 +186,9 @@ static inline int __task_prio(struct task_struct *p)
 		return MAX_RT_PRIO + NICE_WIDTH; /* 140 */
 
 #ifdef CONFIG_HMBIRD_SCHED
-	if (p->sched_class == &hmbird_sched_class)
+	if (p->sched_class == &ext_sched_class)
 		return MAX_RT_PRIO + MAX_NICE + 1; /* 120, squash ext */
 #endif
-
 	return MAX_RT_PRIO + MAX_NICE; /* 119, squash fair */
 }
 
@@ -223,7 +219,7 @@ static inline bool prio_less(struct task_struct *a, struct task_struct *b, bool 
 
 #ifdef CONFIG_HMBIRD_SCHED
 	if (pa == MAX_RT_PRIO + MAX_NICE + 1)	/* ext */
-		return hmbird_prio_less(a, b, in_fi);
+		return scx_prio_less(a, b, in_fi);
 #endif
 
 	return false;
@@ -924,11 +920,7 @@ static inline void hrtick_rq_init(struct rq *rq)
 static inline bool set_nr_and_not_polling(struct task_struct *p)
 {
 	struct thread_info *ti = task_thread_info(p);
-	unsigned long flags;
-
-	flags = atomic_long_fetch_or_acquire(_TIF_NEED_RESCHED, &ti->flags);
-
-	return !(flags & _TIF_POLLING_NRFLAG);
+	return !(fetch_or(&ti->flags, _TIF_NEED_RESCHED) & _TIF_POLLING_NRFLAG);
 }
 
 /*
@@ -1258,10 +1250,15 @@ bool sched_can_stop_tick(struct rq *rq)
 		return true;
 
 #ifdef CONFIG_HMBIRD_SCHED
-	if (!hmbird_enabled() && rq->nr_running > 1)
+	/*
+	 * If there are no DL,RR/FIFO tasks, there must only be CFS or SCX tasks
+	 * left. For CFS, if there's more than one we need the tick for
+	 * involuntary preemption. For SCX, ask.
+	 */
+	if (!scx_enabled() && rq->nr_running > 1)
 		return false;
 
-	if (hmbird_enabled() && !hmbird_can_stop_tick(rq))
+	if (scx_enabled() && !scx_can_stop_tick(rq))
 		return false;
 #else
 	/*
@@ -2194,10 +2191,10 @@ void deactivate_task(struct rq *rq, struct task_struct *p, int flags)
 EXPORT_SYMBOL_GPL(deactivate_task);
 
 #ifdef CONFIG_HMBIRD_SCHED
-struct hmbird_sched_change_guard
-hmbird_sched_change_guard_init(struct rq *rq, struct task_struct *p, int flags)
+struct sched_change_guard
+sched_change_guard_init(struct rq *rq, struct task_struct *p, int flags)
 {
-	struct hmbird_sched_change_guard cg = {
+	struct sched_change_guard cg = {
 		.rq = rq,
 		.p = p,
 		.queued = task_on_rq_queued(p),
@@ -2219,7 +2216,7 @@ hmbird_sched_change_guard_init(struct rq *rq, struct task_struct *p, int flags)
 	return cg;
 }
 
-void hmbird_sched_change_guard_fini(struct hmbird_sched_change_guard *cg, int flags)
+void sched_change_guard_fini(struct sched_change_guard *cg, int flags)
 {
 	if (cg->queued)
 		enqueue_task(cg->rq, cg->p, flags | ENQUEUE_NOCLOCK);
@@ -3730,7 +3727,7 @@ int select_task_rq(struct task_struct *p, int cpu, int wake_flags)
 	 *   not worry about this generic constraint ]
 	 */
 #ifdef CONFIG_HMBIRD_SCHED
-	if (unlikely(!is_cpu_allowed(p, cpu)) && (p->sched_class != &hmbird_sched_class))
+	if (unlikely(!is_cpu_allowed(p, cpu)) && (p->sched_class != &ext_sched_class))
 #else
 	if (unlikely(!is_cpu_allowed(p, cpu)))
 #endif
@@ -4863,15 +4860,16 @@ int sched_fork(unsigned long clone_flags, struct task_struct *p)
 		p->sched_reset_on_fork = 0;
 	}
 #ifdef CONFIG_HMBIRD_SCHED
-	ret = hmbird_pre_fork(p);
+	ret = scx_pre_fork(p);
 	if (ret)
 		goto out_cancel;
+
 	if (dl_prio(p->prio)) {
 		ret = -EAGAIN;
 		goto out_cancel;
-	} else if (task_on_hmbird(p)) {
-		p->sched_class = &hmbird_sched_class;
-	} else if (rt_prio(p->prio)) {
+	} else if (task_on_scx(p)) {
+                p->sched_class = &ext_sched_class;
+        } else if (rt_prio(p->prio)) {
 		p->sched_class = &rt_sched_class;
 	} else {
 		p->sched_class = &fair_sched_class;
@@ -4901,9 +4899,10 @@ int sched_fork(unsigned long clone_flags, struct task_struct *p)
 	RB_CLEAR_NODE(&p->pushable_dl_tasks);
 #endif
 	return 0;
+
 #ifdef CONFIG_HMBIRD_SCHED
 out_cancel:
-	hmbird_cancel_fork(p);
+	scx_cancel_fork(p);
 	return ret;
 #endif
 }
@@ -4936,15 +4935,22 @@ void sched_cgroup_fork(struct task_struct *p, struct kernel_clone_args *kargs)
 		p->sched_class->task_fork(p);
 	raw_spin_unlock_irqrestore(&p->pi_lock, flags);
 #ifdef CONFIG_HMBIRD_SCHED
-	hmbird_fork(p);
+	scx_fork(p);
 #endif
 }
+
+#ifdef CONFIG_HMBIRD_SCHED
+void sched_cancel_fork(struct task_struct *p)
+{
+	scx_cancel_fork(p);
+}
+#endif
 
 void sched_post_fork(struct task_struct *p)
 {
 	uclamp_post_fork(p);
 #ifdef CONFIG_HMBIRD_SCHED
-	hmbird_post_fork(p);
+	scx_post_fork(p);
 #endif
 }
 
@@ -5797,13 +5803,13 @@ void scheduler_tick(void)
 	if (sched_feat(LATENCY_WARN) && resched_latency)
 		resched_latency_warn(cpu, resched_latency);
 #ifdef CONFIG_HMBIRD_SCHED
-	hmbird_notify_sched_tick();
+	scx_notify_sched_tick();
 #endif
 	perf_event_task_tick();
 
 #ifdef CONFIG_SMP
 #ifdef CONFIG_HMBIRD_SCHED
-	if (!hmbird_enabled()) {
+	if (!scx_enabled()) {
 #endif
 		rq->idle_balance = idle_cpu(cpu);
 		trigger_load_balance(rq);
@@ -5812,9 +5818,6 @@ void scheduler_tick(void)
 #endif
 #endif
 	trace_android_vh_scheduler_tick(rq);
-#ifdef CONFIG_HMBIRD_SCHED
-	scheduler_tick_handler(NULL, NULL);
-#endif
 }
 
 #ifdef CONFIG_NO_HZ_FULL
@@ -6146,11 +6149,9 @@ __pick_next_task(struct rq *rq, struct task_struct *prev, struct rq_flags *rf)
 	struct task_struct *p;
 
 #ifdef CONFIG_HMBIRD_SCHED
-	if (hmbird_enabled())
+	if (scx_enabled())
 		goto restart;
-
 #endif
-
 	/*
 	 * Optimization: we know that if all tasks are in the fair class we can
 	 * call that function directly, but only if the @prev task wasn't of a
@@ -6180,7 +6181,7 @@ restart:
 	for_each_active_class(class) {
 		p = class->pick_next_task(rq);
 		if (p) {
-			hmbird_notify_pick_next_task(rq, p, class);
+			scx_notify_pick_next_task(rq, p, class);
 			return p;
 		}
 	}
@@ -6863,9 +6864,6 @@ static void __sched notrace __schedule(unsigned int sched_mode)
 		psi_sched_switch(prev, next, !task_on_rq_queued(prev));
 
 		trace_sched_switch(sched_mode & SM_MASK_PREEMPT, prev, next, prev_state);
-#ifdef CONFIG_HMBIRD_SCHED
-		sched_switch_handler(NULL, sched_mode & SM_MASK_PREEMPT, prev, next, prev_state);
-#endif
 
 		/* Also unlocks the rq: */
 		rq = context_switch(rq, prev, next, &rf);
@@ -7199,19 +7197,18 @@ EXPORT_SYMBOL(default_wake_function);
 static void __setscheduler_prio(struct task_struct *p, int prio)
 {
 #ifdef CONFIG_HMBIRD_SCHED
-	bool on_hmbird = task_on_hmbird(p);
+	bool on_scx = task_on_scx(p);
 
 	if (p->sched_class == &stop_sched_class)
-		;/* do nothing */
 		;
 	else if (dl_prio(prio))
 		p->sched_class = &dl_sched_class;
-	else if (rt_prio(prio) && on_hmbird)
-		p->sched_class = &hmbird_sched_class;
+	else if (rt_prio(prio) && on_scx && !reject_change_to_scx(p, prio))
+		p->sched_class = &ext_sched_class;
 	else if (rt_prio(prio))
 		p->sched_class = &rt_sched_class;
-	else if (on_hmbird)
-		p->sched_class = &hmbird_sched_class;
+	else if (on_scx)
+		p->sched_class = &ext_sched_class;
 	else
 		p->sched_class = &fair_sched_class;
 #else
@@ -7894,7 +7891,7 @@ recheck:
 	 * runqueue lock must be held.
 	 */
 #ifdef CONFIG_HMBIRD_SCHED
-	spin_lock_irqsave(&hmbird_tasks_lock, flags);
+	spin_lock_irqsave(&scx_tasks_lock, flags);
 #endif
 	rq = task_rq_lock(p, &rf);
 	update_rq_clock(rq);
@@ -7908,10 +7905,9 @@ recheck:
 	}
 
 #ifdef CONFIG_HMBIRD_SCHED
-	retval = hmbird_check_setscheduler(p, policy);
+	retval = scx_check_setscheduler(p, policy);
 	if (retval)
 		goto unlock;
-
 #endif
 	/*
 	 * If not changing anything there's no need to proceed further,
@@ -7970,7 +7966,7 @@ change:
 		policy = oldpolicy = -1;
 		task_rq_unlock(rq, p, &rf);
 #ifdef CONFIG_HMBIRD_SCHED
-		spin_unlock_irqrestore(&hmbird_tasks_lock, flags);
+		spin_unlock_irqrestore(&scx_tasks_lock, flags);
 #endif
 		if (cpuset_locked)
 			cpuset_unlock();
@@ -8040,7 +8036,7 @@ change:
 	head = splice_balance_callbacks(rq);
 	task_rq_unlock(rq, p, &rf);
 #ifdef CONFIG_HMBIRD_SCHED
-	spin_unlock_irqrestore(&hmbird_tasks_lock, flags);
+	spin_unlock_irqrestore(&scx_tasks_lock, flags);
 #endif
 	if (pi) {
 		if (cpuset_locked)
@@ -8057,7 +8053,7 @@ change:
 unlock:
 	task_rq_unlock(rq, p, &rf);
 #ifdef CONFIG_HMBIRD_SCHED
-	spin_unlock_irqrestore(&hmbird_tasks_lock, flags);
+	spin_unlock_irqrestore(&scx_tasks_lock, flags);
 #endif
 	if (cpuset_locked)
 		cpuset_unlock();
@@ -9188,7 +9184,7 @@ SYSCALL_DEFINE1(sched_get_priority_max, int, policy)
 	case SCHED_BATCH:
 	case SCHED_IDLE:
 #ifdef CONFIG_HMBIRD_SCHED
-	case SCHED_HMBIRD:
+	case SCHED_EXT:
 #endif
 		ret = 0;
 		break;
@@ -9218,7 +9214,7 @@ SYSCALL_DEFINE1(sched_get_priority_min, int, policy)
 	case SCHED_BATCH:
 	case SCHED_IDLE:
 #ifdef CONFIG_HMBIRD_SCHED
-	case SCHED_HMBIRD:
+	case SCHED_EXT:
 #endif
 		ret = 0;
 	}
@@ -10083,8 +10079,8 @@ void __init sched_init(void)
 	WARN_ON_ONCE(!sched_class_above(&dl_sched_class, &rt_sched_class));
 	WARN_ON_ONCE(!sched_class_above(&rt_sched_class, &fair_sched_class));
 	WARN_ON_ONCE(!sched_class_above(&fair_sched_class, &idle_sched_class));
-	WARN_ON_ONCE(!sched_class_above(&fair_sched_class, &hmbird_sched_class));
-	WARN_ON_ONCE(!sched_class_above(&hmbird_sched_class, &idle_sched_class));
+	WARN_ON_ONCE(!sched_class_above(&fair_sched_class, &ext_sched_class));
+	WARN_ON_ONCE(!sched_class_above(&ext_sched_class, &idle_sched_class));
 #else
 	BUG_ON(&idle_sched_class != &fair_sched_class + 1 ||
 	       &fair_sched_class != &rt_sched_class + 1 ||
@@ -10092,8 +10088,8 @@ void __init sched_init(void)
 #ifdef CONFIG_SMP
 	BUG_ON(&dl_sched_class != &stop_sched_class + 1);
 #endif
-#endif
 
+#endif
 	wait_bit_init();
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
@@ -10262,9 +10258,8 @@ void __init sched_init(void)
 #endif
 	init_sched_fair_class();
 #ifdef CONFIG_HMBIRD_SCHED
-	init_sched_hmbird_class();
+	init_sched_ext_class();
 #endif
-
 	psi_init();
 
 	init_uclamp();
@@ -10729,9 +10724,12 @@ static int cpu_cgroup_css_online(struct cgroup_subsys_state *css)
 {
 	struct task_group *tg = css_tg(css);
 	struct task_group *parent = css_tg(css->parent);
-
 #ifdef CONFIG_HMBIRD_SCHED
-	hmbird_tg_online(tg);
+	int ret;
+
+	ret = scx_tg_online(tg);
+	if (ret)
+		return ret;
 #endif
 
 	if (parent)
@@ -10782,63 +10780,53 @@ static int cpu_cgroup_can_attach(struct cgroup_taskset *tset)
 #endif
 
 #ifdef CONFIG_HMBIRD_SCHED
-static inline void update_cgroup_ids_table(int ids, u8 hmbird_cgroup_deadline_idx)
+static int cgroup_write_scx_deadline(struct cgroup_subsys_state *css,
+					  struct cftype *cftype, u64 dl)
 {
-	if (ids < 0 || ids >= NUMS_CGROUP_KINDS) {
-		pr_err("update_cgroup_ids_tab idx err!\n");
-		return;
-	}
-	cgroup_ids_table[ids] = hmbird_cgroup_deadline_idx;
-}
-
-static int cgroup_write_hmbird_deadline(struct cgroup_subsys_state *css,
-						struct cftype *cftype, u64 dl)
-{
+	struct task_group *tg;
 	int i;
 
 	for (i = MIN_CGROUP_DL_IDX; i < MAX_GLOBAL_DSQS; ++i) {
-		if (dl < HMBIRD_BPF_DSQS_DEADLINE[i])
+		if (dl < SCX_BPF_DSQS_DEADLINE[i])
 			break;
 	}
 
 	i = max_t(int, i-1, MIN_CGROUP_DL_IDX);
-	if (!css || !css->cgroup || !css->cgroup->kn)
-		return 0;
-	update_cgroup_ids_table(css->cgroup->kn->id, i);
+
+	tg = css_tg(css);
+	tg->scx_deadline_idx = i;
 
 	return 0;
 }
 
-static u64 cgroup_read_hmbird_deadline(struct cgroup_subsys_state *css,
-						struct cftype *cft)
+static u64 cgroup_read_scx_deadline(struct cgroup_subsys_state *css,
+					  struct cftype *cft)
 {
-	u8 i;
+	struct task_group *tg = css_tg(css);
+	int i;
 
-	if (!css || !css->cgroup || !css->cgroup->kn)
-		return (u64) HMBIRD_BPF_DSQS_DEADLINE[DEFAULT_CGROUP_DL_IDX];
-	i = min_t(u8, cgroup_ids_table[css->cgroup->kn->id], MAX_GLOBAL_DSQS-1);
+	i = min_t(int, tg->scx_deadline_idx, MAX_GLOBAL_DSQS-1);
 	if (i < 0) {
-		pr_err("<sched_ext> <%s> i is %d, less than 0, name is %s\n",
-			__func__, i, css->cgroup->kn->name);
+		pr_err("<sched_ext> <cgroup_read_scx_deadline> i is %d, less than 0, name is %s\n",
+			i, css->cgroup->kn->name);
 		i = DEFAULT_CGROUP_DL_IDX;
 	}
 
-	return (u64) HMBIRD_BPF_DSQS_DEADLINE[i];
+	return (u64) SCX_BPF_DSQS_DEADLINE[i];
 }
 
-static void hmbird_change_rt_sched_prop(struct cgroup_subsys_state *css,
-						struct task_struct *p, int prio)
+static void scx_change_rt_sched_prop(struct cgroup_subsys_state *css, struct task_struct *p, int prio)
 {
 	if (!css || !rt_prio(prio))
 		return;
 
-	if (!(hmbird_get_sched_prop(p) & SCHED_PROP_DEADLINE_MASK)) {
+	if (!(p->scx->sched_prop & SCHED_PROP_DEADLINE_MASK)) {
 		if (!strcmp(css->cgroup->kn->name, "display"))
-			hmbird_set_sched_prop(p, SCHED_PROP_DEADLINE_LEVEL3);
+			sched_set_sched_prop(p, SCHED_PROP_DEADLINE_LEVEL3);
 		else if (!strcmp(css->cgroup->kn->name, "touch"))
-			hmbird_set_sched_prop(p, SCHED_PROP_DEADLINE_LEVEL2);
+			sched_set_sched_prop(p, SCHED_PROP_DEADLINE_LEVEL2);
 		else if (!strcmp(css->cgroup->kn->name, "multimedia"))
-			hmbird_set_sched_prop(p, SCHED_PROP_DEADLINE_LEVEL1);
+			sched_set_sched_prop(p, SCHED_PROP_DEADLINE_LEVEL1);
 	}
 }
 #endif
@@ -10850,7 +10838,7 @@ static void cpu_cgroup_attach(struct cgroup_taskset *tset)
 
 	cgroup_taskset_for_each(task, css, tset) {
 #ifdef CONFIG_HMBIRD_SCHED
-		hmbird_change_rt_sched_prop(css, task, task->prio);
+		scx_change_rt_sched_prop(css, task, task->prio);
 #endif
 		sched_move_task(task);
 	}
@@ -11505,9 +11493,9 @@ static struct cftype cpu_legacy_files[] = {
 #endif
 #ifdef CONFIG_HMBIRD_SCHED
 	{
-		.name = "hmbird.deadline",
-		.read_u64 = cgroup_read_hmbird_deadline,
-		.write_u64 = cgroup_write_hmbird_deadline,
+		.name = "scx.deadline",
+		.read_u64 = cgroup_read_scx_deadline,
+		.write_u64 = cgroup_write_scx_deadline,
 	},
 #endif
 	{ }	/* Terminate */

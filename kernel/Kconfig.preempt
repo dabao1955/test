@@ -135,7 +135,6 @@ config SCHED_CORE
 
 config HMBIRD_SCHED
 	bool "hmbird Scheduling Class(base on ext scheduler)"
-	default y
 	help
 	  This option enables a new scheduler class sched_ext (SCX), which
 	  allows scheduling policies to be implemented as BPF programs to

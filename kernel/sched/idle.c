@@ -175,7 +175,7 @@ static void cpuidle_idle_call(void)
 	 * case, exit the function after re-enabling the local irq.
 	 */
 	if (need_resched()) {
-		raw_local_irq_enable();
+		local_irq_enable();
 		return;
 	}
 
@@ -247,7 +247,7 @@ exit_idle:
 	 * It is up to the idle functions to reenable local interrupts
 	 */
 	if (WARN_ON_ONCE(irqs_disabled()))
-		raw_local_irq_enable();
+		local_irq_enable();
 }
 
 /*
@@ -276,7 +276,7 @@ static void do_idle(void)
 	__current_set_polling();
 	tick_nohz_idle_enter();
 
-	while (likely(!need_resched())) {
+	while (!need_resched()) {
 		rmb();
 
 		local_irq_disable();
@@ -288,6 +288,7 @@ static void do_idle(void)
 		}
 
 		arch_cpu_idle_enter();
+		rcu_nocb_flush_deferred_wakeup();
 
 		/*
 		 * In poll mode we reenable interrupts and spin. Also if we
@@ -295,16 +296,12 @@ static void do_idle(void)
 		 * broadcast device expired for us, we don't want to go deep
 		 * idle as we know that the IPI is going to arrive right away.
 		 */
-		if (unlikely(cpu_idle_force_poll)) {
-			tick_nohz_idle_restart_tick();
-			cpu_idle_poll();
-		} else if (unlikely(tick_check_broadcast_expired())) {
+		if (cpu_idle_force_poll || tick_check_broadcast_expired()) {
 			tick_nohz_idle_restart_tick();
 			cpu_idle_poll();
 		} else {
 			cpuidle_idle_call();
 		}
-		rcu_nocb_flush_deferred_wakeup();
 		arch_cpu_idle_exit();
 	}
 
@@ -433,7 +430,7 @@ static void check_preempt_curr_idle(struct rq *rq, struct task_struct *p, int fl
 static void put_prev_task_idle(struct rq *rq, struct task_struct *prev)
 {
 #ifdef CONFIG_HMBIRD_SCHED
-	hmbird_update_idle(rq, false);
+	scx_update_idle(rq, false);
 #endif
 }
 
@@ -441,7 +438,7 @@ static void set_next_task_idle(struct rq *rq, struct task_struct *next, bool fir
 {
 	update_idle_core(rq);
 #ifdef CONFIG_HMBIRD_SCHED
-	hmbird_update_idle(rq, true);
+	scx_update_idle(rq, true);
 #endif
 	schedstat_inc(rq->sched_goidle);
 }

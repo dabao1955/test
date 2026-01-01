@@ -23,6 +23,9 @@
 #include <linux/sched/task.h>
 #include <linux/sched/task_stack.h>
 #include <linux/sched/cputime.h>
+#ifdef CONFIG_HMBIRD_SCHED
+#include <linux/sched/ext.h>
+#endif
 #include <linux/seq_file.h>
 #include <linux/rtmutex.h>
 #include <linux/init.h>
@@ -109,10 +112,6 @@
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/task.h>
-
-#ifdef CONFIG_HMBIRD_SCHED
-#include <linux/sched/hmbird.h>
-#endif
 
 #undef CREATE_TRACE_POINTS
 #include <trace/hooks/sched.h>
@@ -963,7 +962,7 @@ void __put_task_struct(struct task_struct *tsk)
 	WARN_ON(refcount_read(&tsk->usage));
 	WARN_ON(tsk == current);
 #ifdef CONFIG_HMBIRD_SCHED
-	hmbird_free(tsk);
+	sched_ext_free(tsk);
 #endif
 	io_uring_free(tsk);
 	cgroup_free(tsk);
@@ -2397,11 +2396,10 @@ static __latent_entropy struct task_struct *copy_process(
 	retval = perf_event_init_task(p, clone_flags);
 	if (retval)
 #ifdef CONFIG_HMBIRD_SCHED
-		goto bad_fork_hmbird_cancel_fork;
+		goto bad_fork_sched_cancel_fork;
 #else
 		goto bad_fork_cleanup_policy;
 #endif
-
 	retval = audit_alloc(p);
 	if (retval)
 		goto bad_fork_cleanup_perf;
@@ -2713,8 +2711,8 @@ bad_fork_cleanup_audit:
 bad_fork_cleanup_perf:
 	perf_event_free_task(p);
 #ifdef CONFIG_HMBIRD_SCHED
-bad_fork_hmbird_cancel_fork:
-	hmbird_cancel_fork(p);
+bad_fork_sched_cancel_fork:
+	sched_cancel_fork(p);
 #endif
 bad_fork_cleanup_policy:
 	lockdep_free_task(p);

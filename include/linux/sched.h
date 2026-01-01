@@ -73,10 +73,8 @@ struct task_delay_info;
 struct task_group;
 
 #ifdef CONFIG_HMBIRD_SCHED
-#include <linux/sched/hmbird.h>
+#include <linux/sched/ext.h>
 #endif
-
-#define define SCHED_HMBIRD		7
 
 /*
  * Task state bitmask. NOTE! These bits are also
@@ -1553,7 +1551,11 @@ struct task_struct {
 	union rv_task_monitor		rv[RV_PER_TASK_MONITORS];
 #endif
 	ANDROID_KABI_USE(1, unsigned int saved_state);
+#ifdef CONFIG_HMBIRD_SCHED
+	ANDROID_KABI_USE(2, struct sched_ext_entity	*scx;);
+#else
 	ANDROID_KABI_RESERVE(2);
+#endif
 	ANDROID_KABI_RESERVE(3);
 	ANDROID_KABI_RESERVE(4);
 	ANDROID_KABI_RESERVE(5);
@@ -1933,89 +1935,52 @@ static inline int task_nice(const struct task_struct *p)
 }
 
 #ifdef CONFIG_HMBIRD_SCHED
-static inline bool task_is_top_task(struct task_struct *p)
+#define SCHED_PROP_DEADLINE_MASK (0xFF) /* deadline for ext sched class */
+#define SCHED_PROP_DEADLINE_LEVEL1 (1)  /* 1ms for user-aware audio tasks */
+#define SCHED_PROP_DEADLINE_LEVEL2 (2)  /* 2ms for user-aware touch tasks */
+#define SCHED_PROP_DEADLINE_LEVEL3 (3)  /* 4ms for user aware dispaly tasks */
+#define SCHED_PROP_DEADLINE_LEVEL4 (4)  /* 6ms */
+#define SCHED_PROP_DEADLINE_LEVEL5 (5)  /* 8ms */
+#define SCHED_PROP_DEADLINE_LEVEL6 (6)  /* 16ms */
+#define SCHED_PROP_DEADLINE_LEVEL7 (7)  /* 32ms */
+#define SCHED_PROP_DEADLINE_LEVEL8 (8)  /* 64ms */
+#define SCHED_PROP_DEADLINE_LEVEL9 (9)  /* 128ms */
+#define SCHED_EXT_DSQ_TYPE_PERIOD		(0) /* period dsq of scx */
+#define SCHED_EXT_DSQ_TYPE_NON_PERIOD	(1) /* non period dsq of scx */
+static inline long sched_prop_get_deadline_dsq_id(struct task_struct *p)
 {
-	return (((struct hmbird_entity *)(p->android_oem_data1[HMBIRD_TS_IDX]))
-		->top_task_prop & TOP_TASK_BITS_MASK);
+	return (p->scx->sched_prop & SCHED_PROP_DEADLINE_MASK) - 1;
 }
 
-static inline int get_top_task_prop(struct task_struct *p)
+#define SCHED_PROP_TOP_THREAD_SHIFT (8)
+#define SCHED_PROP_TOP_THREAD_MASK  (0xf << SCHED_PROP_TOP_THREAD_SHIFT)
+static inline int sched_prop_get_top_thread_id(struct task_struct *p)
 {
-	return get_hmbird_ts(p)->top_task_prop;
+	return (p->scx->sched_prop & SCHED_PROP_TOP_THREAD_MASK) >> SCHED_PROP_TOP_THREAD_SHIFT;
 }
 
-static inline int set_top_task_prop(struct task_struct *p, u64 set, u64 clear)
+static inline int sched_set_sched_prop(struct task_struct *p, unsigned long sp)
 {
-	if (set)
-		get_hmbird_ts(p)->top_task_prop |= set;
-	if (clear)
-		get_hmbird_ts(p)->top_task_prop &= ~clear;
+	if (NULL == p->scx)
+		return 0;
+
+	p->scx->sched_prop = sp;
 	return 0;
 }
 
-static inline void reset_top_task_prop(struct task_struct *p)
+static inline unsigned long sched_get_sched_prop(struct task_struct *p)
 {
-	get_hmbird_ts(p)->top_task_prop = 0;
+	return p->scx->sched_prop;
 }
 
-static inline int hmbird_set_sched_prop(struct task_struct *p, unsigned long sp)
+/* For why we choose (MAX_RT_PRIO / 2), see sched_set_fifo(). */
+static inline bool reject_change_to_scx(struct task_struct *p, int prio)
 {
-	struct hmbird_entity *entity = get_hmbird_ts(p);
+	int sp_dl = p->scx->sched_prop & SCHED_PROP_DEADLINE_MASK;
 
-	if (entity) {
-		entity->sched_prop = sp;
-	}
-	return 0;
+	return (prio < (MAX_RT_PRIO >> 1)) && (sp_dl < SCHED_PROP_DEADLINE_LEVEL3);
 }
-
-static inline unsigned long hmbird_get_sched_prop(struct task_struct *p)
-{
-	struct hmbird_entity *entity = get_hmbird_ts(p);
-
-	if (entity)
-		return entity->sched_prop;
-	else
-		return 0;
-}
-
-static inline void hmbird_set_dsq_id(struct task_struct *p, unsigned long dsq)
-{
-	unsigned long new_dsq;
-	struct hmbird_entity *entity = get_hmbird_ts(p);
-
-	if (entity) {
-		new_dsq = (entity->sched_prop & ~SCHED_PROP_DEADLINE_MASK) | dsq;
-		entity->sched_prop = new_dsq;
-	}
-}
-
-static inline unsigned long hmbird_get_dsq_id(struct task_struct *p)
-{
-	struct hmbird_entity *entity = get_hmbird_ts(p);
-
-	if (entity)
-		return (entity->sched_prop & SCHED_PROP_DEADLINE_MASK);
-	else
-		return 0;
-}
-
-static inline void hmbird_set_dsq_sync_ux(struct task_struct *p, int val)
-{
-	struct hmbird_entity *entity = get_hmbird_ts(p);
-
-	if (entity)
-		entity->dsq_sync_ux = val;
-}
-
-static inline int hmbird_get_dsq_sync_ux(struct task_struct *p)
-{
-	struct hmbird_entity *entity = get_hmbird_ts(p);
-
-	if (entity)
-		return entity->dsq_sync_ux;
-	else
-		return 0;
-}
+bool task_is_scx(struct task_struct *p);
 #endif
 
 extern int can_nice(const struct task_struct *p, const int nice);

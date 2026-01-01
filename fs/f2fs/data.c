@@ -554,16 +554,6 @@ static blk_opf_t f2fs_io_flags(struct f2fs_io_info *fio)
 	return op_flags;
 }
 
-/*
- * Return true, if pre_bio's bdev is same as its target device.
- */
-static bool __same_bdev(struct f2fs_sb_info *sbi,
-                                block_t blk_addr, struct bio *bio)
-{
-	struct block_device *b = f2fs_target_device(sbi, blk_addr, NULL);
-	return bio_dev(bio) == b->bd_dev;
-}
-
 static struct bio *__bio_alloc(struct f2fs_io_info *fio, int npages)
 {
 	struct f2fs_sb_info *sbi = fio->sbi;
@@ -939,7 +929,7 @@ static bool page_is_mergeable(struct f2fs_sb_info *sbi, struct bio *bio,
 		return false;
 	if (last_blkaddr + 1 != cur_blkaddr)
 		return false;
-	return __same_bdev(sbi, cur_blkaddr, bio);
+	return bio->bi_bdev == f2fs_target_device(sbi, cur_blkaddr, NULL);
 }
 
 static bool io_type_is_mergeable(struct f2fs_bio_info *io,
@@ -1085,6 +1075,8 @@ void f2fs_submit_merged_ipu_write(struct f2fs_sb_info *sbi,
 	if (f2fs_sb_has_seqzone(sbi))
 		types = F2FS_NR_CPUS * 2 + 1;
 #endif
+
+	f2fs_bug_on(sbi, !target && !page);
 
 	for (temp = HOT; temp < types && !found; temp++) {
 		struct f2fs_bio_info *io = sbi->write_io[DATA] + temp;
@@ -3430,12 +3422,13 @@ out:
 	}
 	unlock_page(page);
 	if (!S_ISDIR(inode->i_mode) && !IS_NOQUOTA(inode) &&
-			!F2FS_I(inode)->cp_task && allow_balance)
+			!F2FS_I(inode)->wb_task && allow_balance)
 		f2fs_balance_fs(sbi, need_balance_fs);
 
 	if (unlikely(f2fs_cp_error(sbi))) {
 		f2fs_submit_merged_write(sbi, DATA);
-		f2fs_submit_merged_ipu_write(sbi, bio, NULL);
+		if (bio && *bio)
+			f2fs_submit_merged_ipu_write(sbi, bio, NULL);
 		submitted = NULL;
 	}
 
@@ -3746,7 +3739,7 @@ static inline bool __should_serialize_io(struct inode *inode,
 					struct writeback_control *wbc)
 {
 	/* to avoid deadlock in path of data flush */
-	if (F2FS_I(inode)->cp_task)
+	if (F2FS_I(inode)->wb_task)
 		return false;
 
 	if (!S_ISREG(inode->i_mode))
@@ -4738,13 +4731,7 @@ static int f2fs_iomap_begin(struct inode *inode, loff_t offset, loff_t length,
 		iomap->bdev = map.m_bdev;
 		iomap->addr = blks_to_bytes(inode, map.m_pblk);
 	} else {
-
-	/*
-	 * If the blocks being overwritten are already allocated,
-	 * f2fs_map_lock and f2fs_balance_fs are not necessary.
-	 */
-	if ((flags & IOMAP_WRITE) &&
-		!f2fs_overwrite_io(inode, offset, length))
+		if (flags & IOMAP_WRITE)
 			return -ENOTBLK;
 		iomap->length = blks_to_bytes(inode, next_pgofs) -
 				iomap->offset;

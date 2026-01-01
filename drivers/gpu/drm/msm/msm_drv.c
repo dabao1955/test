@@ -516,7 +516,7 @@ static int msm_drm_init(struct device *dev, const struct drm_driver *drv)
 
 		sched_set_fifo(priv->event_thread[i].worker->task);
 #ifdef CONFIG_HMBIRD_SCHED
-		hmbird_set_sched_prop(ev_thread->worker->task, SCHED_PROP_DEADLINE_LEVEL3);
+		sched_set_sched_prop(priv->event_thread[i].worker->task, SCHED_PROP_DEADLINE_LEVEL3);
 #endif
 	}
 
