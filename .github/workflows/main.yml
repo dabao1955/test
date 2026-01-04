@@ -35,6 +35,7 @@ jobs:
       run: |
         mkdir -p -v out
         export PATH="$HOME/clang/bin":${PATH} 
+        clang --version
         make ARCH=arm64 CLANG_TRIPLE="aarch64-linux-gnu-" CROSS_COMPILE="aarch64-linux-gnu-" CROSS_COMPILE_ARM32="arm-linux-gnueabihf-" LLVM=1 O=out KCFLAGS+=-Wno-error gki_defconfig all -j8
         test -f out/.config && cp out/.config out/config -v
     - name: clean
